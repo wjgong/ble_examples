@@ -94,21 +94,20 @@
 #define SBC_RSSI_READ_EVT                     0x0004
 #define SBC_PDU_UPDATE_EVT                    0x0008
 #define SBC_PHY_UPDATE_EVT                    0x0010
-#define SBC_MEASURE_INST_SPEED_EVT            0x0020
 
 // Simple BLE Central Task Events - often containing no information to process
 // other than the event itself
 #define SBC_ICALL_EVT                         ICALL_MSG_EVENT_ID // Event_Id_31
 #define SBC_QUEUE_EVT                         UTIL_QUEUE_EVENT_ID // Event_Id_30
 #define SBC_START_DISCOVERY_EVT               Event_Id_00
-#define SBC_MEASURE_AVG_SPEED_EVT             Event_Id_01
-#define SBC_TOGGLE_THROUGHPUT_EVT             Event_Id_02
+#define SBC_WRITE_DATA_EVT                    Event_Id_01
+#define SBC_WR_TOGGLE_THROUGHPUT_EVT          Event_Id_02
 
 #define SBC_ALL_EVENTS                        (SBC_ICALL_EVT                | \
                                                SBC_QUEUE_EVT                | \
                                                SBC_START_DISCOVERY_EVT      | \
-                                               SBC_MEASURE_AVG_SPEED_EVT    | \
-                                               SBC_TOGGLE_THROUGHPUT_EVT)
+                                               SBC_WRITE_DATA_EVT           | \
+                                               SBC_WR_TOGGLE_THROUGHPUT_EVT)
 
 // Maximum number of scan responses
 #define DEFAULT_MAX_SCAN_RES                  8
@@ -158,6 +157,10 @@
 
 #define CODED_PHY_CHANGE_DELAY                500
 
+// Parameters for write timer, unit in ms
+#define WRITE_TIMER_DURATION    80
+#define WRITE_TIMER_PERIOD      80
+
 // Type of Display to open
 #if defined(BOARD_DISPLAY_USE_LCD) && (BOARD_DISPLAY_USE_LCD!=0)
   #define SBC_DISPLAY_TYPE Display_Type_LCD
@@ -168,21 +171,20 @@
 #endif // BOARD_DISPLAY_USE_LCD && BOARD_DISPLAY_USE_UART
 
 // Row numbers
-#define SBC_ROW_RESULT          TBM_ROW_APP
-#define SBC_ROW_STATUS_1        (TBM_ROW_APP + 1)
-#define SBC_ROW_STATUS_2        (TBM_ROW_APP + 2)
-#define SBC_ROW_PEER_DEVICE     (TBM_ROW_APP + 2)
-#define SBC_ROW_STATUS_3        (TBM_ROW_APP + 3)
-#define SBC_ROW_PHY             (TBM_ROW_APP + 3)
-#define SBC_ROW_STATUS_4        (TBM_ROW_APP + 4)
-#define SBC_ROW_INST_THROUGHPUT (TBM_ROW_APP + 4)
-#define SBC_ROW_AVG_THROUGHPUT  (TBM_ROW_APP + 5)
-#define SBC_ROW_RSSI            (TBM_ROW_APP + 6)
-#define SBC_ROW_BDADDR          (TBM_ROW_APP + 8)
-#define SBC_ROW_ROLESTATE       (TBM_ROW_APP + 9)
-//#define SBC_ROW_GATT_RESULT   (TBM_ROW_APP + 10)
-#define SBC_ROW_PDU             (TBM_ROW_APP + 10)
-#define SBC_ROW_MTU             (TBM_ROW_APP + 11)
+#define SBC_ROW_RESULT           TBM_ROW_APP
+#define SBC_ROW_STATUS_1         (TBM_ROW_APP + 1)
+#define SBC_ROW_STATUS_2         (TBM_ROW_APP + 2)
+#define SBC_ROW_PEER_DEVICE      (TBM_ROW_APP + 2)
+#define SBC_ROW_STATUS_3         (TBM_ROW_APP + 3)
+#define SBC_ROW_PHY              (TBM_ROW_APP + 3)
+#define SBC_ROW_STATUS_4         (TBM_ROW_APP + 4)
+#define SBC_ROW_DEBUG_OUTPUT     (TBM_ROW_APP + 4)
+#define SBC_ROW_THROUGHPUT_TIMER (TBM_ROW_APP + 5)
+#define SBC_ROW_RSSI             (TBM_ROW_APP + 6)
+#define SBC_ROW_BDADDR           (TBM_ROW_APP + 8)
+#define SBC_ROW_ROLESTATE        (TBM_ROW_APP + 9)
+#define SBC_ROW_PDU              (TBM_ROW_APP + 10)
+#define SBC_ROW_MTU              (TBM_ROW_APP + 11)
 
 // Task configuration
 #define SBC_TASK_PRIORITY                     1
@@ -195,6 +197,9 @@
 
 #define DEFAULT_PDU_SIZE 27
 #define DEFAULT_TX_TIME 328
+
+// The combined overhead for L2CAP and ATT notification headers
+#define TOTAL_PACKET_OVERHEAD 7
 
 // Application states
 enum
@@ -275,7 +280,7 @@ static ICall_SyncHandle syncEvent;
 
 // Clock object used to signal timeout
 static Clock_Struct startDiscClock;
-static Clock_Struct speedClock;
+static Clock_Struct writeClock;
 static Clock_Struct startPHYClock;
 
 // Queue object used for app messages
@@ -341,9 +346,6 @@ static const char searchStr[] = {
 // Received byte counters + circular buffer for Throughput Data
 static volatile uint32_t bytesRecvd = 0;
 #define CB_SIZE 10
-static uint32_t bytesRecvd_cb[CB_SIZE];
-static int      bytesRecvd_cb_index = 0;
-static bool     cbBufferFilled = false;
 
 // Strings for PHY
 static uint8_t* phyName[] = {
@@ -396,7 +398,7 @@ static void SimpleBLECentral_RssiFree(uint16_t connHandle);
 
 static uint8_t SimpleBLECentral_eventCB(gapCentralRoleEvent_t *pEvent);
 
-void SimpleBLECentral_speedHandler(UArg a0);
+void SimpleBLECentral_writeHandler(UArg a0);
 void SimpleBLECentral_PHYHandler(UArg a0);
 void SimpleBLECentral_startDiscHandler(UArg a0);
 void SimpleBLECentral_keyChangeHandler(uint8 keys);
@@ -404,6 +406,8 @@ void SimpleBLECentral_readRssiHandler(UArg a0);
 
 static uint8_t SimpleBLECentral_enqueueMsg(uint8_t event, uint8_t status,
                                            void *pData);
+
+static void SimpleBLECentral_writeData(void);
 
 static void SBC_ClearDeviceList();
 static void SBC_NextDevice();
@@ -481,9 +485,9 @@ static void SimpleBLECentral_init(void)
   Util_constructClock(&startDiscClock, SimpleBLECentral_startDiscHandler,
                       DEFAULT_SVC_DISCOVERY_DELAY, 0, false, NULL);
 
-  // Setup throughput clock to run every second
-  Util_constructClock(&speedClock, SimpleBLECentral_speedHandler,
-                      1000, 1000, false, NULL);
+  // Setup throughput clock to run every
+  Util_constructClock(&writeClock, SimpleBLECentral_writeHandler,
+                      WRITE_TIMER_DURATION, 0, false, NULL);
 
   // Set up a PHY Clock for transitions between Coded PHYs
   Util_constructClock(&startPHYClock, SimpleBLECentral_PHYHandler,
@@ -562,6 +566,9 @@ static void SimpleBLECentral_init(void)
 
   // Display Default MTU Size (updated during MTU exchange)
   Display_print1(dispHandle, SBC_ROW_MTU, 0, "MTU Size: %dB", ATT_MTU_SIZE);
+
+  // Display timer for write throughput
+  Display_print1(dispHandle, SBC_ROW_THROUGHPUT_TIMER, 0, "Throughput Timer: %dms", WRITE_TIMER_PERIOD);
 }
 
 /*********************************************************************
@@ -624,50 +631,24 @@ static void SimpleBLECentral_taskFxn(UArg a0, UArg a1)
         }
       }
 
-      // Instantanous Speed Event
+      // Start Discovery Event
       if (events & SBC_START_DISCOVERY_EVT)
       {
         SimpleBLECentral_startDiscovery();
       }
 
-      // Speed AVG Measure Event
-      if (events & SBC_MEASURE_AVG_SPEED_EVT)
+      // Write Data Event
+      if (events & SBC_WRITE_DATA_EVT)
       {
-        // local vars
-        uint32_t bitsReceived = 0;
-        int i;
-
-        // Determine Average from Circular Buffer
-        if(cbBufferFilled)
-        {
-          // Average using Total Buffer Size
-          for(i = 0; i < CB_SIZE; i++){
-            bitsReceived += bytesRecvd_cb[i];
-          }
-          bitsReceived = bitsReceived/CB_SIZE;
-        }
-        else
-        {
-          // Average using Running Buffer Size (prior to buffer being filled)
-          for(i = 0; i <= bytesRecvd_cb_index; i++){
-            bitsReceived += bytesRecvd_cb[i];
-          }
-          bitsReceived = bitsReceived/(bytesRecvd_cb_index+1);
-        }
-        // Convert to bits
-        bitsReceived = 8*bitsReceived;
-
-        // Display Throughput
-        Display_print3(dispHandle, SBC_ROW_AVG_THROUGHPUT, 0, "Average Rate (kb/s): %d.%d over %d Samples",
-                   (bitsReceived/1000),(bitsReceived % 1000), CB_SIZE);
-
-        averageRate = (bitsReceived/1000);
+          static uint32_t timer_counter = 1;
+          Display_print1(dispHandle, SBC_ROW_DEBUG_OUTPUT, 0, "TC %d", timer_counter++);
+          SimpleBLECentral_writeData();
       }
 
       // Toggle Throughput Event
       // Peripheral Supports Throughput - so throughput should
       // begin to be measured
-      if (events & SBC_TOGGLE_THROUGHPUT_EVT)
+      if (events & SBC_WR_TOGGLE_THROUGHPUT_EVT)
       {
         // Variables Needed for Write
         attWriteReq_t writeReq;
@@ -675,10 +656,10 @@ static void SimpleBLECentral_taskFxn(UArg a0, UArg a1)
 
         // Populate the Request Structure
         writeReq.cmd = 0;
-        writeReq.handle = throughputHandles[THROUGHPUT_SERVICE_TOGGLE_THROUGHPUT].charHdl;
-        writeReq.len = THROUGHPUT_SERVICE_TOGGLE_THROUGHPUT_LEN;
-        writeReq.pValue = GATT_bm_alloc(connHandle, ATT_WRITE_REQ, THROUGHPUT_SERVICE_TOGGLE_THROUGHPUT_LEN, NULL);
-        memcpy(writeReq.pValue, &temp, THROUGHPUT_SERVICE_TOGGLE_THROUGHPUT_LEN);
+        writeReq.handle = throughputHandles[THROUGHPUT_SERVICE_WR_TOGGLE_THROUGHPUT].charHdl;
+        writeReq.len = THROUGHPUT_SERVICE_WR_TOGGLE_THROUGHPUT_LEN;
+        writeReq.pValue = GATT_bm_alloc(connHandle, ATT_WRITE_REQ, THROUGHPUT_SERVICE_WR_TOGGLE_THROUGHPUT_LEN, NULL);
+        memcpy(writeReq.pValue, &temp, THROUGHPUT_SERVICE_WR_TOGGLE_THROUGHPUT_LEN);
         writeReq.sig = 0;
 
         // Perform a GATT Write + Check Status
@@ -693,7 +674,7 @@ static void SimpleBLECentral_taskFxn(UArg a0, UArg a1)
 
           GATT_bm_free((gattMsg_t *)&writeReq, ATT_WRITE_REQ);
 
-          Event_post(syncEvent, SBC_TOGGLE_THROUGHPUT_EVT);
+          Event_post(syncEvent, SBC_WR_TOGGLE_THROUGHPUT_EVT);
         }
         else
         {
@@ -702,10 +683,10 @@ static void SimpleBLECentral_taskFxn(UArg a0, UArg a1)
 
           // Force the initial PDU size to be 27
           // Note: All connections are formed on 1M PHY
-          SimpleBLECentral_doSetDLEPDU(0);
+          //SimpleBLECentral_doSetDLEPDU(0);
 
-          // Enable Throughput Data Collection
-          Util_startClock(&speedClock);
+          // Enable Write Data
+          Util_startClock(&writeClock);
         }
       }
     }
@@ -928,8 +909,9 @@ static void SimpleBLECentral_processAppMsg(sbcEvt_t *pMsg)
             ICall_free(pMsg->pData);
           }
         }
-        break;
       }
+      break;
+
     case SBC_PHY_UPDATE_EVT:
       {
         // When Changing PHY, throughput is stopped on the peripehral
@@ -993,25 +975,6 @@ static void SimpleBLECentral_processAppMsg(sbcEvt_t *pMsg)
             ICall_free(pMsg->pData);
           }
         }
-        break;
-      }
-
-    case SBC_MEASURE_INST_SPEED_EVT:
-      {
-        uint32_t* temp = (uint32_t*)(pMsg->pData);
-
-        // Note at this point, Bytes have been recorded
-        uint32_t bitsReceived = *temp;
-
-        // Convert Bytes to bits
-        bitsReceived = 8*bitsReceived;
-
-        // Display Throughput
-        Display_print2(dispHandle, SBC_ROW_INST_THROUGHPUT, 0, "Instant Rate (kb/s): %d.%d",
-                      (bitsReceived/1000),(bitsReceived % 1000));
-
-        // GUI Composer
-        instantRate = (bitsReceived/1000);
       }
       break;
 
@@ -1157,13 +1120,11 @@ static void SimpleBLECentral_processRoleEvent(gapCentralRoleEvent_t *pEvent)
         SimpleBLECentral_CancelRssi(pEvent->linkTerminate.connectionHandle);
 
         // Throughput as well, if enabled
-        Util_stopClock(&speedClock);
+        Util_stopClock(&writeClock);
 
         Display_print1(dispHandle, SBC_ROW_RESULT, 0, "Reason: %d", pEvent->linkTerminate.reason);
         Display_clearLine(dispHandle, SBC_ROW_PEER_DEVICE);
         Display_clearLine(dispHandle, SBC_ROW_PHY);
-        Display_clearLine(dispHandle, SBC_ROW_INST_THROUGHPUT);
-        Display_clearLine(dispHandle, SBC_ROW_AVG_THROUGHPUT);
         Display_clearLine(dispHandle, SBC_ROW_RSSI);
 
         // Go to Main Menu
@@ -1651,7 +1612,7 @@ static void SimpleBLECentral_processGATTDiscEvent(gattMsgEvent_t *pMsg)
       Display_print0(dispHandle, SBC_ROW_RESULT, 0, "Throughput Service Found, Starting Throughput");
 
       // Inform Application to Toggle Throughput
-      Event_post(syncEvent, SBC_TOGGLE_THROUGHPUT_EVT);
+      Event_post(syncEvent, SBC_WR_TOGGLE_THROUGHPUT_EVT);
     }
     discState = BLE_DISC_STATE_IDLE;
   }
@@ -1835,36 +1796,54 @@ static uint8_t SimpleBLECentral_enqueueMsg(uint8_t event, uint8_t state,
 }
 
 /*********************************************************************
- * @fn      SimpleBLECentral_speedHandler
+ * @fn      SimpleBLECentral_writeHandler
  *
- * @brief   RTOS clock handler that counts number of bytes recieved
+ * @brief   RTOS clock handler that writes data to peripheral
  *
  * @param   a0 - RTOS clock arg0.
  *
  * @return  void
  */
-void SimpleBLECentral_speedHandler(UArg a0)
+void SimpleBLECentral_writeHandler(UArg a0)
 {
-  // Place Bytes Recieved into Circular Buffer
-  bytesRecvd_cb[bytesRecvd_cb_index] = bytesRecvd;
+    // Write data to slave
+    Event_post(syncEvent, SBC_WRITE_DATA_EVT);
 
-  // Update Instantanous Throughput
-  SimpleBLECentral_enqueueMsg(SBC_MEASURE_INST_SPEED_EVT, SUCCESS, (void*)&bytesRecvd_cb[bytesRecvd_cb_index]);
+    Util_restartClock(&writeClock, WRITE_TIMER_DURATION);
+}
 
-  // Update Average Throughput
-  Event_post(syncEvent, SBC_MEASURE_AVG_SPEED_EVT);
+static void SimpleBLECentral_writeData(void)
+{
+    // Message counter for Throughput Demo
+    static uint32_t msg_counter = 1;
+    uint16_t len = MAX_PDU_SIZE - TOTAL_PACKET_OVERHEAD;
+    attWriteReq_t wrt;
+    bStatus_t status;
 
-  // Calculate next Index + Update Rolling Average
-  bytesRecvd_cb_index++;
-  bytesRecvd = 0; // Reset the count
-  if ( bytesRecvd_cb_index >= CB_SIZE )
-  {
-    // Wrap the index back to the head
-    bytesRecvd_cb_index = 0;
+    wrt.len = len;
+    wrt.cmd = TRUE;
+    wrt.sig = FALSE;
+    wrt.handle = throughputHandles[THROUGHPUT_SERVICE_WRITE_DATA].charHdl;
+    wrt.pValue = GATT_bm_alloc(connHandle, ATT_WRITE_CMD, len, NULL);
 
-    // Indicate that the buffer is now filled
-    cbBufferFilled = true;
-  }
+    if (wrt.pValue != NULL) {
+        memset(wrt.pValue, 0x5A, len);
+        // Place index
+        wrt.pValue[0] = (msg_counter >> 24) & 0xFF;
+        wrt.pValue[1] = (msg_counter >> 16) & 0xFF;
+        wrt.pValue[2] = (msg_counter >> 8) & 0xFF;
+        wrt.pValue[3] = msg_counter & 0xFF;
+
+        // Attempt to write data
+        status = GATT_WriteNoRsp(connHandle, &wrt);
+        //status = GATT_WriteCharValue(connHandle, &wrt, selfEntity);
+        if ( status != SUCCESS ) {
+            GATT_bm_free((gattMsg_t *)&wrt, ATT_WRITE_CMD);
+        } else {
+            // Notification is successfully sent, increment counters
+            msg_counter ++;
+        }
+    }
 }
 
 /*********************************************************************

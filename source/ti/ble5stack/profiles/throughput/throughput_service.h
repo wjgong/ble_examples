@@ -74,6 +74,19 @@ extern "C"
 #define THROUGHPUT_SERVICE_TOGGLE_THROUGHPUT_UUID 0x1237
 #define THROUGHPUT_SERVICE_TOGGLE_THROUGHPUT_LEN  1
 
+//  Characteristic defines
+#define THROUGHPUT_SERVICE_WR_TOGGLE_THROUGHPUT      3
+#define THROUGHPUT_SERVICE_WR_TOGGLE_THROUGHPUT_UUID 0x123A
+#define THROUGHPUT_SERVICE_WR_TOGGLE_THROUGHPUT_LEN  1
+
+//  Characteristic defines
+#define THROUGHPUT_SERVICE_NOTIFY_DATA      4
+#define THROUGHPUT_SERVICE_NOTIFY_DATA_UUID 0x1238
+
+//  Characteristic defines
+#define THROUGHPUT_SERVICE_WRITE_DATA       5
+#define THROUGHPUT_SERVICE_WRITE_DATA_UUID  0x1239
+
 /*********************************************************************
  * TYPEDEFS
  */
