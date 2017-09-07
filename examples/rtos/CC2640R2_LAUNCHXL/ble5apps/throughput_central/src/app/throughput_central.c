@@ -158,8 +158,8 @@
 #define CODED_PHY_CHANGE_DELAY                500
 
 // Parameters for write timer, unit in ms
-#define WRITE_TIMER_DURATION    80
-#define WRITE_TIMER_PERIOD      80
+#define WRITE_TIMER_DURATION    2
+#define WRITE_TIMER_PERIOD      2
 
 // Type of Display to open
 #if defined(BOARD_DISPLAY_USE_LCD) && (BOARD_DISPLAY_USE_LCD!=0)
@@ -200,6 +200,9 @@
 
 // The combined overhead for L2CAP and ATT notification headers
 #define TOTAL_PACKET_OVERHEAD 7
+
+// use timer to trigger write throughput testing.
+#define THROUGHPUT_TIMER
 
 // Application states
 enum
@@ -280,7 +283,9 @@ static ICall_SyncHandle syncEvent;
 
 // Clock object used to signal timeout
 static Clock_Struct startDiscClock;
+#ifdef THROUGHPUT_TIMER
 static Clock_Struct writeClock;
+#endif
 static Clock_Struct startPHYClock;
 
 // Queue object used for app messages
@@ -364,6 +369,11 @@ static uint8_t* phyClock_phyIndex= 0;
 // PHY Options
 static uint16_t phyOptions = HCI_PHY_OPT_NONE;
 
+#ifndef THROUGHPUT_TIMER
+// Flag to Toggle Throughput Demo
+static bool throughputOn = false;
+#endif
+
 static throughputProfileHdl_t* throughputHandles = NULL;
 
 // Global Variables for GUI Composer
@@ -398,7 +408,9 @@ static void SimpleBLECentral_RssiFree(uint16_t connHandle);
 
 static uint8_t SimpleBLECentral_eventCB(gapCentralRoleEvent_t *pEvent);
 
+#ifdef THROUGHPUT_TIMER
 void SimpleBLECentral_writeHandler(UArg a0);
+#endif
 void SimpleBLECentral_PHYHandler(UArg a0);
 void SimpleBLECentral_startDiscHandler(UArg a0);
 void SimpleBLECentral_keyChangeHandler(uint8 keys);
@@ -407,7 +419,11 @@ void SimpleBLECentral_readRssiHandler(UArg a0);
 static uint8_t SimpleBLECentral_enqueueMsg(uint8_t event, uint8_t status,
                                            void *pData);
 
+#ifdef THROUGHPUT_TIMER
 static void SimpleBLECentral_writeData(void);
+#else
+static void SimpleBLECentral_blastData(void);
+#endif
 
 static void SBC_ClearDeviceList();
 static void SBC_NextDevice();
@@ -485,9 +501,11 @@ static void SimpleBLECentral_init(void)
   Util_constructClock(&startDiscClock, SimpleBLECentral_startDiscHandler,
                       DEFAULT_SVC_DISCOVERY_DELAY, 0, false, NULL);
 
-  // Setup throughput clock to run every
+#ifdef THROUGHPUT_TIMER
+  // Setup throughput clock to run every WRITE_TIMER_DURATION
   Util_constructClock(&writeClock, SimpleBLECentral_writeHandler,
-                      WRITE_TIMER_DURATION, 0, false, NULL);
+                      1000, 0, false, NULL);
+#endif
 
   // Set up a PHY Clock for transitions between Coded PHYs
   Util_constructClock(&startPHYClock, SimpleBLECentral_PHYHandler,
@@ -518,6 +536,8 @@ static void SimpleBLECentral_init(void)
   GAP_SetParamValue(TGAP_LIM_DISC_SCAN, DEFAULT_SCAN_DURATION);
   GGS_SetParameter(GGS_DEVICE_NAME_ATT, GAP_DEVICE_NAME_LEN,
                    (void *)attDeviceName);
+  GAP_SetParamValue(TGAP_CONN_EST_INT_MAX, 12);
+  GAP_SetParamValue(TGAP_CONN_EST_INT_MIN, 12);
 
   // Initialize GATT Client
   VOID GATT_InitClient();
@@ -640,9 +660,13 @@ static void SimpleBLECentral_taskFxn(UArg a0, UArg a1)
       // Write Data Event
       if (events & SBC_WRITE_DATA_EVT)
       {
+#ifdef THROUGHPUT_TIMER
           static uint32_t timer_counter = 1;
           Display_print1(dispHandle, SBC_ROW_DEBUG_OUTPUT, 0, "TC %d", timer_counter++);
           SimpleBLECentral_writeData();
+#else
+          SimpleBLECentral_blastData();
+#endif
       }
 
       // Toggle Throughput Event
@@ -683,10 +707,15 @@ static void SimpleBLECentral_taskFxn(UArg a0, UArg a1)
 
           // Force the initial PDU size to be 27
           // Note: All connections are formed on 1M PHY
-          //SimpleBLECentral_doSetDLEPDU(0);
+          SimpleBLECentral_doSetDLEPDU(1);
 
+#ifdef THROUGHPUT_TIMER
           // Enable Write Data
           Util_startClock(&writeClock);
+#else
+          throughputOn = TRUE;
+          Event_post(syncEvent, SBC_WRITE_DATA_EVT);
+#endif
         }
       }
     }
@@ -1119,8 +1148,10 @@ static void SimpleBLECentral_processRoleEvent(gapCentralRoleEvent_t *pEvent)
         // Cancel RSSI reads
         SimpleBLECentral_CancelRssi(pEvent->linkTerminate.connectionHandle);
 
+#ifdef THROUGHPUT_TIMER
         // Throughput as well, if enabled
         Util_stopClock(&writeClock);
+#endif
 
         Display_print1(dispHandle, SBC_ROW_RESULT, 0, "Reason: %d", pEvent->linkTerminate.reason);
         Display_clearLine(dispHandle, SBC_ROW_PEER_DEVICE);
@@ -1620,7 +1651,7 @@ static void SimpleBLECentral_processGATTDiscEvent(gattMsgEvent_t *pMsg)
 
 /*
  * Local Function to quickly check the device list
- * For a particualr Address
+ * For a particular Address
  */
 bool checkDevList(uint8_t* addr, uint8_t* index)
 {
@@ -1795,6 +1826,7 @@ static uint8_t SimpleBLECentral_enqueueMsg(uint8_t event, uint8_t state,
   return FALSE;
 }
 
+#ifdef THROUGHPUT_TIMER
 /*********************************************************************
  * @fn      SimpleBLECentral_writeHandler
  *
@@ -1818,7 +1850,7 @@ static void SimpleBLECentral_writeData(void)
     static uint32_t msg_counter = 1;
     uint16_t len = MAX_PDU_SIZE - TOTAL_PACKET_OVERHEAD;
     attWriteReq_t wrt;
-    bStatus_t status;
+    bStatus_t status = SUCCESS;
 
     wrt.len = len;
     wrt.cmd = TRUE;
@@ -1845,6 +1877,68 @@ static void SimpleBLECentral_writeData(void)
         }
     }
 }
+#else
+static void SimpleBLECentral_blastData()
+{
+  // Subtract the total packet overhead of ATT and L2CAP layer from notification payload
+  static uint32_t msg_counter = 1;
+  uint16_t len = MAX_PDU_SIZE-TOTAL_PACKET_OVERHEAD;
+  attWriteReq_t wrt;
+  bStatus_t status = SUCCESS;
+
+  while(throughputOn)
+  {
+    // If RTOS queue is not empty, process app message.
+    // We need to process the app message here in the case of a keypress
+    while (!Queue_empty(appMsgQueue))
+    {
+      sbcEvt_t *pMsg = (sbcEvt_t *)Util_dequeueMsg(appMsgQueue);
+      if (pMsg)
+      {
+        // Process message.
+        SimpleBLECentral_processAppMsg(pMsg);
+
+        // Free the space from the message.
+        ICall_free(pMsg);
+      }
+    }
+
+    wrt.len = len;
+    wrt.cmd = TRUE;
+    wrt.sig = FALSE;
+    wrt.handle = throughputHandles[THROUGHPUT_SERVICE_WRITE_DATA].charHdl;
+    wrt.pValue = GATT_bm_alloc(connHandle, ATT_WRITE_CMD, len, NULL);
+
+    if ( wrt.pValue != NULL ) //if allocated
+    {
+
+      // Place index
+      wrt.pValue[0] = (msg_counter >> 24) & 0xFF;
+      wrt.pValue[1] = (msg_counter >> 16) & 0xFF;
+      wrt.pValue[2] = (msg_counter >> 8) & 0xFF;
+      wrt.pValue[3] = msg_counter & 0xFF;
+
+      status = GATT_WriteNoRsp(connHandle, &wrt);
+      //status = GATT_WriteCharValue(connHandle, &wrt, selfEntity);
+      if ( status != SUCCESS ) //if noti not sent
+      {
+        GATT_bm_free( (gattMsg_t *)&wrt, ATT_WRITE_CMD);
+      }
+      else
+      {
+        // Notification is successfully sent, increment counters
+        Display_print1(dispHandle, SBC_ROW_DEBUG_OUTPUT, 0, "MC %d", msg_counter);
+        msg_counter++;
+      }
+    }
+    else
+    {
+      // bleNoResources was returned
+      asm(" NOP ");
+    }
+  }
+}
+#endif
 
 /*********************************************************************
  * @fn      SimpleBLECentral_PHYHandler
@@ -1903,17 +1997,17 @@ bool SimpleBLECentral_doSetDLEPDU(uint8 index)
   // In other words, using the commands below which adjust this devices TX PDU,
   // the peer device will adjust it's RX PDU size to allow reception.
 
-  if( throughputHandles )
-  {
-    // Here we'll utilize the throughput profile to have the peer device
-    // change it's TX PDU size in order to send more data and increase throughput
-    // or decrease TX PDU size to reduce throughput
-
-    // Inform the Application to perform a GATT write with
-    // the selected size
-    SimpleBLECentral_enqueueMsg(SBC_PDU_UPDATE_EVT, SUCCESS, (void*) txOctets);
-  }
-  else
+//  if( throughputHandles )
+//  {
+//    // Here we'll utilize the throughput profile to have the peer device
+//    // change it's TX PDU size in order to send more data and increase throughput
+//    // or decrease TX PDU size to reduce throughput
+//
+//    // Inform the Application to perform a GATT write with
+//    // the selected size
+//    SimpleBLECentral_enqueueMsg(SBC_PDU_UPDATE_EVT, SUCCESS, (void*) txOctets);
+//  }
+//  else
   {
     // DLE HCI command to adjust PDU size for current connection
     HCI_LE_SetDataLenCmd(connHandle, *txOctets, txTime);
