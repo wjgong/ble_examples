@@ -42,7 +42,7 @@
 #include <string.h>
 
 #include "bcomdef.h"
-#include "OSAL.h"
+#include "osal.h"
 #include "linkdb.h"
 #include "att.h"
 #include "gatt.h"
@@ -50,7 +50,7 @@
 #include "gattservapp.h"
 #include "gapbondmgr.h"
 
-#include "Throughput_Service.h"
+#include "throughput_service.h"
 
 /*********************************************************************
  * MACROS
@@ -89,6 +89,21 @@ CONST uint8_t Throughput_Service_Toggle_ThroughputUUID[ATT_UUID_SIZE] =
 {
   TI_BASE_UUID_128(THROUGHPUT_SERVICE_TOGGLE_THROUGHPUT_UUID)
 };
+// Wr_Toggle_Throughput UUID
+CONST uint8_t Throughput_Service_Wr_Toggle_ThroughputUUID[ATT_UUID_SIZE] =
+{
+  TI_BASE_UUID_128(THROUGHPUT_SERVICE_WR_TOGGLE_THROUGHPUT_UUID)
+};
+// Notify_Data UUID
+CONST uint8_t Throughput_Service_Notify_DataUUID[ATT_UUID_SIZE] =
+{
+  TI_BASE_UUID_128(THROUGHPUT_SERVICE_NOTIFY_DATA_UUID)
+};
+// Write_Data UUID
+CONST uint8_t Throughput_Service_Write_DataUUID[ATT_UUID_SIZE] =
+{
+  TI_BASE_UUID_128(THROUGHPUT_SERVICE_WRITE_DATA_UUID)
+};
 
 /*********************************************************************
  * LOCAL VARIABLES
@@ -105,19 +120,35 @@ static CONST gattAttrType_t Throughput_ServiceDecl = { ATT_UUID_SIZE, Throughput
 
 // Characteristic "Update_PDU" Properties (for declaration)
 static uint8_t Throughput_Service_Update_PDUProps = GATT_PROP_READ | GATT_PROP_WRITE;
-
 // Characteristic "Update_PDU" Value variable
 static uint8_t Throughput_Service_Update_PDUVal[THROUGHPUT_SERVICE_UPDATE_PDU_LEN] = {0};
+
 // Characteristic "Update_PHY" Properties (for declaration)
 static uint8_t Throughput_Service_Update_PHYProps = GATT_PROP_READ | GATT_PROP_WRITE;
-
 // Characteristic "Update_PHY" Value variable
 static uint8_t Throughput_Service_Update_PHYVal[THROUGHPUT_SERVICE_UPDATE_PHY_LEN] = {0};
+
 // Characteristic "Toggle_Throughput" Properties (for declaration)
 static uint8_t Throughput_Service_Toggle_ThroughputProps = GATT_PROP_READ | GATT_PROP_WRITE;
-
 // Characteristic "Toggle_Throughput" Value variable
 static uint8_t Throughput_Service_Toggle_ThroughputVal[THROUGHPUT_SERVICE_TOGGLE_THROUGHPUT_LEN] = {0};
+
+// Characteristic "Wr_Toggle_Throughput" Properties (for declaration)
+static uint8_t Throughput_Service_Wr_Toggle_ThroughputProps = GATT_PROP_READ | GATT_PROP_WRITE;
+// Characteristic "Wr_Toggle_Throughput" Value variable
+static uint8_t Throughput_Service_Wr_Toggle_ThroughputVal[THROUGHPUT_SERVICE_WR_TOGGLE_THROUGHPUT_LEN] = {0};
+
+// Characteristic "Notify_Data" Properties (for declaration)
+static uint8_t Throughput_Service_Notify_DataProps = GATT_PROP_NOTIFY;
+// Characteristic "Notify_Data" Value variable
+static uint8_t Throughput_Service_Notify_DataVal[THROUGHPUT_SERVICE_NOTIFY_DATA_LEN] = {0};
+// Characteristic "Notify_Data" CCC
+static gattCharCfg_t *notifyDataClientCharCfg;
+
+// Characteristic "Write_Data" Properties (for declaration)
+static uint8_t Throughput_Service_Write_DataProps = GATT_PROP_WRITE;
+// Characteristic "Write_Data" Value variable
+static uint8_t Throughput_Service_Write_DataVal[THROUGHPUT_SERVICE_WRITE_DATA_LEN] = {0};
 
 /*********************************************************************
 * Profile Attributes - Table
@@ -132,7 +163,7 @@ static gattAttribute_t Throughput_ServiceAttrTbl[] =
     0,
     (uint8_t *)&Throughput_ServiceDecl
   },
-    // Update_PDU Characteristic Declaration
+    //0. Update_PDU Characteristic Declaration
     {
       { ATT_BT_UUID_SIZE, characterUUID },
       GATT_PERMIT_READ,
@@ -146,7 +177,7 @@ static gattAttribute_t Throughput_ServiceAttrTbl[] =
         0,
         Throughput_Service_Update_PDUVal
       },
-    // Update_PHY Characteristic Declaration
+    //1. Update_PHY Characteristic Declaration
     {
       { ATT_BT_UUID_SIZE, characterUUID },
       GATT_PERMIT_READ,
@@ -160,7 +191,7 @@ static gattAttribute_t Throughput_ServiceAttrTbl[] =
         0,
         Throughput_Service_Update_PHYVal
       },
-    // Toggle_Throughput Characteristic Declaration
+    //2. Toggle_Throughput Characteristic Declaration
     {
       { ATT_BT_UUID_SIZE, characterUUID },
       GATT_PERMIT_READ,
@@ -173,6 +204,55 @@ static gattAttribute_t Throughput_ServiceAttrTbl[] =
         GATT_PERMIT_READ | GATT_PERMIT_WRITE,
         0,
         Throughput_Service_Toggle_ThroughputVal
+      },
+    //3. Wr_Toggle_Throughput Characteristic Declaration
+    {
+      { ATT_BT_UUID_SIZE, characterUUID },
+      GATT_PERMIT_READ,
+      0,
+      &Throughput_Service_Wr_Toggle_ThroughputProps
+    },
+        // Wr_Toggle_Throughput Characteristic Value
+      {
+        { ATT_UUID_SIZE, Throughput_Service_Wr_Toggle_ThroughputUUID },
+        GATT_PERMIT_READ | GATT_PERMIT_WRITE,
+        0,
+        Throughput_Service_Wr_Toggle_ThroughputVal
+      },
+    //4. Notify_Data Characteristic Declaration
+    {
+      { ATT_BT_UUID_SIZE, characterUUID },
+      GATT_PERMIT_READ,
+      0,
+      &Throughput_Service_Notify_DataProps
+    },
+      // Notify_Data CHaracteristic Value
+      {
+        { ATT_UUID_SIZE, Throughput_Service_Notify_DataUUID},
+          GATT_PERMIT_READ,
+          0,
+          Throughput_Service_Notify_DataVal
+      },
+      // Notify_Data Client Characteristic Configuration
+      {
+        { ATT_BT_UUID_SIZE, clientCharCfgUUID},
+        GATT_PERMIT_READ | GATT_PERMIT_WRITE,
+        0,
+        (uint8_t *) &notifyDataClientCharCfg
+      },
+    //5. Write_Data Characteristic Declaration
+    {
+      { ATT_BT_UUID_SIZE, characterUUID },
+      GATT_PERMIT_READ,
+      0,
+      &Throughput_Service_Write_DataProps
+    },
+      // Write_Data Characteristic Value
+      {
+        { ATT_UUID_SIZE, Throughput_Service_Write_DataUUID },
+        GATT_PERMIT_WRITE,
+        0,
+        Throughput_Service_Write_DataVal
       },
 };
 
@@ -209,6 +289,17 @@ CONST gattServiceCBs_t Throughput_ServiceCBs =
 bStatus_t Throughput_Service_AddService( void )
 {
   uint8_t status;
+
+  // Allocate Client Characteristic Configuration table
+  notifyDataClientCharCfg = (gattCharCfg_t *)ICall_malloc( sizeof(gattCharCfg_t) *
+                                                           linkDBNumConns );
+  if ( notifyDataClientCharCfg == NULL )
+  {
+    return ( bleMemAllocError );
+  }
+
+  // Initialize Client Characteristic Configuration attributes
+  GATTServApp_InitCharCfg(INVALID_CONNHANDLE, notifyDataClientCharCfg);
 
   // Register GATT attribute list and CBs with GATT Server App
   status = GATTServApp_RegisterService( Throughput_ServiceAttrTbl,
@@ -328,6 +419,14 @@ bStatus_t Throughput_Service_GetParameter( uint8 param, void *value )
   return ret;
 }
 
+/*
+ * Throughput_Service_GetNotiHandle - Get the handle of Notify attr.
+ *
+ */
+uint16_t Throughput_Service_GetNotiHandle( void )
+{
+    return Throughput_ServiceAttrTbl[THROUGHPUT_SERVICE_NOTIFY_DATA*2+2].handle;
+}
 
 /*********************************************************************
  * @fn          Throughput_Service_ReadAttrCB

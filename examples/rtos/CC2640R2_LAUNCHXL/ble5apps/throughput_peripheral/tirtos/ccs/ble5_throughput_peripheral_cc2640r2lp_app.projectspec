@@ -3,7 +3,7 @@
 <projectSpec>
     <import spec="ble5_throughput_peripheral_cc2640r2lp_stack_library.projectspec"/>
     <project
-        name="ble5_throughput_peripheral_cc2640r2lp_app"
+        name="gdx_throughput_peripheral_cc2640r2lp_app"
         device="CC2640R2F"
         cgtVersion="16.9"
         connection="common/targetdb/connections/TIXDS110_Connection.xml"
@@ -30,7 +30,7 @@
             compilerBuildOptions="
             --cmd_file=${SRC_BLE_DIR}/config/build_components.opt
             --cmd_file=${SRC_BLE_DIR}/config/factory_config.opt
-            --cmd_file=${WORKSPACE_LOC}/ble5_throughput_peripheral_cc2640r2lp_stack_library/TOOLS/build_config.opt
+            --cmd_file=${WORKSPACE_LOC}/gdx_throughput_peripheral_cc2640r2lp_stack_library/TOOLS/build_config.opt
             -mv7M3 -O4 --opt_for_speed=0 --code_state=16 --abi=eabi -me -g --c99 --gcc --gen_func_subsections=on --display_error_number --diag_wrap=off
             -D${COM_TI_SIMPLELINK_CC2640R2_SDK_SYMBOLS}
             -DHEAPMGR_METRICS
@@ -86,9 +86,9 @@
             -l${COM_TI_SIMPLELINK_CC2640R2_SDK_INSTALL_DIR}/source/ti/drivers/lib/drivers_cc26x0r2.aem3
             -l${COM_TI_SIMPLELINK_CC2640R2_SDK_INSTALL_DIR}/source/ti/drivers/rf/lib/rf_singleMode_cc26x0r2.aem3
             -l${COM_TI_SIMPLELINK_CC2640R2_SDK_INSTALL_DIR}/source/ti/display/lib/display.aem3
-            -l${WORKSPACE_LOC}/ble5_throughput_peripheral_cc2640r2lp_stack_library/FlashROM_Library/ble_r2.symbols
-            -l${WORKSPACE_LOC}/ble5_throughput_peripheral_cc2640r2lp_stack_library/FlashROM_Library/lib_linker.cmd
-            -l${WORKSPACE_LOC}/ble5_throughput_peripheral_cc2640r2lp_stack_library/FlashROM_Library/ble5_throughput_peripheral_cc2640r2lp_stack_library.lib
+            -l${WORKSPACE_LOC}/gdx_throughput_peripheral_cc2640r2lp_stack_library/FlashROM_Library/ble_r2.symbols
+            -l${WORKSPACE_LOC}/gdx_throughput_peripheral_cc2640r2lp_stack_library/FlashROM_Library/lib_linker.cmd
+            -l${WORKSPACE_LOC}/gdx_throughput_peripheral_cc2640r2lp_stack_library/FlashROM_Library/gdx_throughput_peripheral_cc2640r2lp_stack_library.lib
             -l${SRC_BLE_DIR}/common/cc26xx/ccs/cc26xx_app.cmd
             -x
             --define=CC26X0ROM=2

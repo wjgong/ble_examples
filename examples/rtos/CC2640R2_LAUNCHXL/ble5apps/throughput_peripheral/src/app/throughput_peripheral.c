@@ -157,6 +157,7 @@
 #define SBP_ROW_ROLESTATE     (TBM_ROW_APP + 4)
 #define SBP_ROW_BDADDR        (TBM_ROW_APP + 5)
 #define SBP_ROW_ROLE          (TBM_ROW_APP + 6)
+#define SBC_ROW_MTU           (TBM_ROW_APP + 7)
 
 // For DLE
 #define DLE_MAX_PDU_SIZE 251
@@ -233,7 +234,7 @@ static uint8_t scanRspData[] =
 };
 
 // GAP - Advertisement data (max size = 31 bytes, though this is
-// best kept short to conserve power while advertisting)
+// best kept short to conserve power while advertising)
 static uint8_t advertData[] =
 {
   // Flags; this sets the device to use limited discoverable
@@ -272,6 +273,8 @@ static uint8_t* phyName[] = {
 
 // PHY Options
 static uint16_t phyOptions = HCI_PHY_OPT_NONE;
+
+static uint16_t mtuSize = ATT_MTU_SIZE;
 
 /*********************************************************************
  * LOCAL FUNCTIONS
@@ -480,6 +483,9 @@ static void SimpleBLEPeripheral_init(void)
 
   // Start the Device
   VOID GAPRole_StartDevice(&SimpleBLEPeripheral_gapRoleCBs);
+
+  // Display Default MTU Size (updated during MTU exchange)
+  Display_print1(dispHandle, SBC_ROW_MTU, 0, "MTU Size: %dB", mtuSize);
 }
 
 /*********************************************************************
@@ -655,6 +661,9 @@ static uint8_t SimpleBLEPeripheral_processStackMsg(ICall_Hdr *pMsg)
             {
               hciEvt_BLEPhyUpdateComplete_t *pPUC
                 = (hciEvt_BLEPhyUpdateComplete_t*) pMsg;
+              uint8_t toggleVal;
+
+              Throughput_Service_GetParameter(THROUGHPUT_SERVICE_TOGGLE_THROUGHPUT, &toggleVal);
 
               if (pPUC->BLEEventCode == HCI_BLE_PHY_UPDATE_COMPLETE_EVENT)
               {
@@ -691,8 +700,9 @@ static uint8_t SimpleBLEPeripheral_processStackMsg(ICall_Hdr *pMsg)
 
                 }
 
-                // Start Throughput
-                SBP_throughputOn();
+                if (toggleVal)
+                    // Start Throughput
+                    SBP_throughputOn();
               }
 
               if (pPUC->BLEEventCode == HCI_BLE_DATA_LENGTH_CHANGE_EVENT)
@@ -701,8 +711,9 @@ static uint8_t SimpleBLEPeripheral_processStackMsg(ICall_Hdr *pMsg)
                 hciEvt_BLEDataLengthChange_t *dleEvt = (hciEvt_BLEDataLengthChange_t *)pMsg;
                 Display_print1(dispHandle, SBP_ROW_STATUS_2, 0, "PDU Size: %dB", dleEvt->maxTxOctets);
 
-                // Start Throughput
-                SBP_throughputOn();
+                if (toggleVal)
+                    // Start Throughput
+                    SBP_throughputOn();
               }
             }
             break;
@@ -760,7 +771,8 @@ static uint8_t SimpleBLEPeripheral_processGATTMsg(gattMsgEvent_t *pMsg)
   else if (pMsg->method == ATT_MTU_UPDATED_EVENT)
   {
     // MTU size updated
-    Display_print1(dispHandle, SBP_ROW_RESULT, 0, "MTU Size: %d", pMsg->msg.mtuEvt.MTU);
+    mtuSize = pMsg->msg.mtuEvt.MTU;
+    Display_print1(dispHandle, SBC_ROW_MTU, 0, "MTU Size: %d", pMsg->msg.mtuEvt.MTU);
   }
 
   // Free message payload. Needed only for ATT Protocol messages
@@ -1329,10 +1341,11 @@ bool SimpleBLEPeripheral_doThroughputDemo(uint8 index)
 static void SimpleBLEPeripheral_blastData()
 {
   // Subtract the total packet overhead of ATT and L2CAP layer from notification payload
-  uint16_t len = MAX_PDU_SIZE-TOTAL_PACKET_OVERHEAD;
+  uint16_t len = mtuSize - 3;    // 3 is the overhead of ATT header
   attHandleValueNoti_t noti;
   bStatus_t status;
-  noti.handle = 0x1E;
+
+  noti.handle = Throughput_Service_GetNotiHandle();
   noti.len = len;
 
   // Store hte connection handle for future reference
@@ -1356,7 +1369,7 @@ static void SimpleBLEPeripheral_blastData()
       }
     }
 
-    noti.pValue = (uint8 *)GATT_bm_alloc( connectionHandle, ATT_HANDLE_VALUE_NOTI, GATT_MAX_MTU, &len );
+    noti.pValue = (uint8 *)GATT_bm_alloc( connectionHandle, ATT_HANDLE_VALUE_NOTI, len, NULL );
 
     if ( noti.pValue != NULL ) //if allocated
     {

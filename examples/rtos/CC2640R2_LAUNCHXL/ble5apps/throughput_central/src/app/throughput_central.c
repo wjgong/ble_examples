@@ -139,11 +139,11 @@
 
 // Minimum connection interval (units of 1.25ms) if automatic parameter update
 // request is enabled
-#define DEFAULT_UPDATE_MIN_CONN_INTERVAL      400
+#define DEFAULT_UPDATE_MIN_CONN_INTERVAL      15
 
 // Maximum connection interval (units of 1.25ms) if automatic parameter update
 // request is enabled
-#define DEFAULT_UPDATE_MAX_CONN_INTERVAL      800
+#define DEFAULT_UPDATE_MAX_CONN_INTERVAL      15
 
 // Slave latency to use if automatic parameter update request is enabled
 #define DEFAULT_UPDATE_SLAVE_LATENCY          0
@@ -536,8 +536,8 @@ static void SimpleBLECentral_init(void)
   GAP_SetParamValue(TGAP_LIM_DISC_SCAN, DEFAULT_SCAN_DURATION);
   GGS_SetParameter(GGS_DEVICE_NAME_ATT, GAP_DEVICE_NAME_LEN,
                    (void *)attDeviceName);
-  GAP_SetParamValue(TGAP_CONN_EST_INT_MAX, 12);
-  GAP_SetParamValue(TGAP_CONN_EST_INT_MIN, 12);
+  GAP_SetParamValue(TGAP_CONN_EST_INT_MAX, DEFAULT_UPDATE_MAX_CONN_INTERVAL);
+  GAP_SetParamValue(TGAP_CONN_EST_INT_MIN, DEFAULT_UPDATE_MIN_CONN_INTERVAL);
 
   // Initialize GATT Client
   VOID GATT_InitClient();

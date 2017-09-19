@@ -82,10 +82,12 @@ extern "C"
 //  Characteristic defines
 #define THROUGHPUT_SERVICE_NOTIFY_DATA      4
 #define THROUGHPUT_SERVICE_NOTIFY_DATA_UUID 0x1238
+#define THROUGHPUT_SERVICE_NOTIFY_DATA_LEN  1
 
 //  Characteristic defines
 #define THROUGHPUT_SERVICE_WRITE_DATA       5
 #define THROUGHPUT_SERVICE_WRITE_DATA_UUID  0x1239
+#define THROUGHPUT_SERVICE_WRITE_DATA_LEN   244
 
 /*********************************************************************
  * TYPEDEFS
@@ -151,6 +153,12 @@ extern bStatus_t Throughput_Service_SetParameter( uint8 param, uint8 len, void *
  *          uint16 pointer).
  */
 extern bStatus_t Throughput_Service_GetParameter( uint8 param, void *value );
+
+/*
+ * Throughput_Service_GetNotiHandle - Get the handle of Notify attr.
+ *
+ */
+extern uint16_t Throughput_Service_GetNotiHandle( void );
 
 /*********************************************************************
 *********************************************************************/
