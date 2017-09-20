@@ -141,13 +141,15 @@
 #define SBP_THROUGHPUT_EVT                    Event_Id_00
 #define SBP_PDU_CHANGE_EVT                    Event_Id_01
 #define SBP_PHY_CHANGE_EVT                    Event_Id_02
+#define SBP_INDICATION_MODE_EVT               Event_Id_03
 
 
 #define SBP_ALL_EVENTS                        (SBP_ICALL_EVT        | \
                                                SBP_QUEUE_EVT        | \
                                                SBP_THROUGHPUT_EVT   | \
                                                SBP_PDU_CHANGE_EVT   | \
-                                               SBP_PHY_CHANGE_EVT)
+                                               SBP_PHY_CHANGE_EVT   | \
+                                               SBP_INDICATION_MODE_EVT)
 
 // Row numbers
 #define SBP_ROW_RESULT        TBM_ROW_APP
@@ -275,6 +277,7 @@ static uint8_t* phyName[] = {
 static uint16_t phyOptions = HCI_PHY_OPT_NONE;
 
 static uint16_t mtuSize = ATT_MTU_SIZE;
+static bool indicationMode = false;
 
 /*********************************************************************
  * LOCAL FUNCTIONS
@@ -301,7 +304,8 @@ static void SBP_throughputOff(void);
 
 void SimpleBLEPeripheral_keyChangeHandler(uint8 keys);
 static void SimpleBLEPeripheral_handleKeys(uint8_t keys);
-static void SimpleBLEPeripheral_blastData();
+static void SimpleBLEPeripheral_blastData(void);
+static void SimpleBLEPeripheral_indicateData(void);
 
 /*********************************************************************
  * EXTERN FUNCTIONS
@@ -570,7 +574,10 @@ static void SimpleBLEPeripheral_taskFxn(UArg a0, UArg a1)
       if (events & SBP_THROUGHPUT_EVT)
       {
         // Begin Throughput Demo in App Task
-        SimpleBLEPeripheral_blastData();
+        if (indicationMode)
+            SimpleBLEPeripheral_indicateData();
+        else
+            SimpleBLEPeripheral_blastData();
       }
 
       if (events & SBP_PDU_CHANGE_EVT)
@@ -619,6 +626,17 @@ static void SimpleBLEPeripheral_taskFxn(UArg a0, UArg a1)
 
         // Set this device's Phy Preference on the current connection.
         HCI_LE_SetPhyCmd(connectionHandle, LL_PHY_USE_PHY_PARAM, phy[newValue], phy[newValue], phyOptions);
+      }
+
+      if (events & SBP_INDICATION_MODE_EVT)
+      {
+          uint8_t newValue;
+
+          Throughput_Service_GetParameter(THROUGHPUT_SERVICE_INDICATION_MODE, &newValue);
+          if (newValue)
+              indicationMode = true;
+          else
+              indicationMode = false;
       }
     }
   }
@@ -773,6 +791,15 @@ static uint8_t SimpleBLEPeripheral_processGATTMsg(gattMsgEvent_t *pMsg)
     // MTU size updated
     mtuSize = pMsg->msg.mtuEvt.MTU;
     Display_print1(dispHandle, SBC_ROW_MTU, 0, "MTU Size: %d", pMsg->msg.mtuEvt.MTU);
+  }
+  else if (pMsg->method == ATT_HANDLE_VALUE_CFM)
+  {
+      // indication is confirmed
+      uint8_t toggleVal;
+
+      Throughput_Service_GetParameter(THROUGHPUT_SERVICE_TOGGLE_THROUGHPUT, &toggleVal);
+      if (toggleVal)
+          SimpleBLEPeripheral_indicateData();
   }
 
   // Free message payload. Needed only for ATT Protocol messages
@@ -1062,31 +1089,33 @@ static void SimpleBLEPeripheral_processCharValueChangeEvt(uint8_t paramID)
   switch(paramID)
   {
     case THROUGHPUT_SERVICE_UPDATE_PDU:
-
       // Turn off Throughput - to allow application to process profile value change
       SBP_throughputOff();
 
       // Inform Application to update PDU
       Event_post(syncEvent, SBP_PDU_CHANGE_EVT);
-
       break;
 
     case THROUGHPUT_SERVICE_UPDATE_PHY:
-
       // Turn off Throughput - to allow application to process profile value change
       SBP_throughputOff();
 
       // Inform Application to update PDU
       Event_post(syncEvent, SBP_PHY_CHANGE_EVT);
-
       break;
 
     case THROUGHPUT_SERVICE_TOGGLE_THROUGHPUT:
-
       // Turn on Throughput - Turns on Throughput
       SimpleBLEPeripheral_doThroughputDemo(0);
-
       break;
+
+    case THROUGHPUT_SERVICE_INDICATION_MODE:
+        // Turn off Throughput - to allow application to process profile value change
+        SBP_throughputOff();
+
+        // Inform Application to enable/disable indication mode
+        Event_post(syncEvent, SBP_INDICATION_MODE_EVT);
+        break;
 
     default:
       // should not reach here!
@@ -1338,10 +1367,10 @@ bool SimpleBLEPeripheral_doThroughputDemo(uint8 index)
  *
  * @return  none
  */
-static void SimpleBLEPeripheral_blastData()
+static void SimpleBLEPeripheral_blastData(void)
 {
-  // Subtract the total packet overhead of ATT and L2CAP layer from notification payload
-  uint16_t len = mtuSize - 3;    // 3 is the overhead of ATT header
+  // Subtract the total packet overhead of ATT from notification payload
+  uint16_t len = mtuSize - 3;
   attHandleValueNoti_t noti;
   bStatus_t status;
 
@@ -1396,6 +1425,44 @@ static void SimpleBLEPeripheral_blastData()
     {
       // bleNoResources was returned
       asm(" NOP ");
+    }
+  }
+}
+
+static void SimpleBLEPeripheral_indicateData(void)
+{
+  // Subtract the total packet overhead of ATT from indication payload
+  uint16_t len = mtuSize - 3;
+  attHandleValueInd_t ind;
+  bStatus_t status;
+
+  ind.handle = Throughput_Service_GetNotiHandle();
+  ind.len = len;
+
+  // Store hte connection handle for future reference
+  uint16_t connectionHandle;
+  GAPRole_GetParameter(GAPROLE_CONNHANDLE, &connectionHandle);
+
+  ind.pValue = (uint8 *)GATT_bm_alloc( connectionHandle, ATT_HANDLE_VALUE_IND, len, NULL );
+
+  if ( ind.pValue != NULL ) //if allocated
+  {
+    // Place index
+    ind.pValue[0] = (msg_counter >> 24) & 0xFF;
+    ind.pValue[1] = (msg_counter >> 16) & 0xFF;
+    ind.pValue[2] = (msg_counter >> 8) & 0xFF;
+    ind.pValue[3] = msg_counter & 0xFF;
+
+    // Attempt to send the indication w/ no authentication
+    status = GATT_Indication( connectionHandle, &ind, 0, selfEntity );
+    if ( status != SUCCESS ) //if indication not sent
+    {
+      GATT_bm_free( (gattMsg_t *)&ind, ATT_HANDLE_VALUE_IND );
+    }
+    else
+    {
+      // Notification is successfully sent, increment counters
+      msg_counter++;
     }
   }
 }

@@ -104,6 +104,11 @@ CONST uint8_t Throughput_Service_Write_DataUUID[ATT_UUID_SIZE] =
 {
   TI_BASE_UUID_128(THROUGHPUT_SERVICE_WRITE_DATA_UUID)
 };
+// Indication_Mode UUID
+CONST uint8_t Throughput_Service_Indication_ModeUUID[ATT_UUID_SIZE] =
+{
+  TI_BASE_UUID_128(THROUGHPUT_SERVICE_INDICATION_MODE_UUID)
+};
 
 /*********************************************************************
  * LOCAL VARIABLES
@@ -139,7 +144,7 @@ static uint8_t Throughput_Service_Wr_Toggle_ThroughputProps = GATT_PROP_READ | G
 static uint8_t Throughput_Service_Wr_Toggle_ThroughputVal[THROUGHPUT_SERVICE_WR_TOGGLE_THROUGHPUT_LEN] = {0};
 
 // Characteristic "Notify_Data" Properties (for declaration)
-static uint8_t Throughput_Service_Notify_DataProps = GATT_PROP_NOTIFY;
+static uint8_t Throughput_Service_Notify_DataProps = GATT_PROP_NOTIFY | GATT_PROP_INDICATE;
 // Characteristic "Notify_Data" Value variable
 static uint8_t Throughput_Service_Notify_DataVal[THROUGHPUT_SERVICE_NOTIFY_DATA_LEN] = {0};
 // Characteristic "Notify_Data" CCC
@@ -149,6 +154,11 @@ static gattCharCfg_t *notifyDataClientCharCfg;
 static uint8_t Throughput_Service_Write_DataProps = GATT_PROP_WRITE;
 // Characteristic "Write_Data" Value variable
 static uint8_t Throughput_Service_Write_DataVal[THROUGHPUT_SERVICE_WRITE_DATA_LEN] = {0};
+
+// Characteristic "Indication_Mode" Properties (for declaration)
+static uint8_t Throughput_Service_Indication_ModeProps = GATT_PROP_WRITE | GATT_PROP_READ;
+// Characteristic "Indication_Mode" Value variable
+static uint8_t Throughput_Service_Indication_ModeVal[THROUGHPUT_SERVICE_INDICATION_MODE_LEN] = {0};
 
 /*********************************************************************
 * Profile Attributes - Table
@@ -253,6 +263,20 @@ static gattAttribute_t Throughput_ServiceAttrTbl[] =
         GATT_PERMIT_WRITE,
         0,
         Throughput_Service_Write_DataVal
+      },
+    //6. Indication_Mode Characteristic Declaration
+    {
+      { ATT_BT_UUID_SIZE, characterUUID },
+      GATT_PERMIT_READ,
+      0,
+      &Throughput_Service_Indication_ModeProps
+    },
+      // Indication_Mode Characteristic Value
+      {
+        { ATT_UUID_SIZE, Throughput_Service_Indication_ModeUUID },
+        GATT_PERMIT_WRITE | GATT_PERMIT_READ,
+        0,
+        Throughput_Service_Indication_ModeVal
       },
 };
 
@@ -378,6 +402,17 @@ bStatus_t Throughput_Service_SetParameter( uint8 param, uint8 len, void *value )
       }
       break;
 
+    case THROUGHPUT_SERVICE_INDICATION_MODE:
+      if ( len == THROUGHPUT_SERVICE_INDICATION_MODE_LEN )
+      {
+        memcpy(Throughput_Service_Indication_ModeVal, value, len);
+      }
+      else
+      {
+        ret = bleInvalidRange;
+      }
+      break;
+
     default:
       ret = INVALIDPARAMETER;
       break;
@@ -410,6 +445,10 @@ bStatus_t Throughput_Service_GetParameter( uint8 param, void *value )
 
     case THROUGHPUT_SERVICE_TOGGLE_THROUGHPUT:
       memcpy(value, Throughput_Service_Toggle_ThroughputVal, THROUGHPUT_SERVICE_TOGGLE_THROUGHPUT_LEN);
+      break;
+
+    case THROUGHPUT_SERVICE_INDICATION_MODE:
+      memcpy(value, Throughput_Service_Indication_ModeVal, THROUGHPUT_SERVICE_INDICATION_MODE_LEN);
       break;
 
     default:
@@ -450,7 +489,7 @@ static bStatus_t Throughput_Service_ReadAttrCB( uint16 connHandle, gattAttribute
   bStatus_t status = SUCCESS;
 
   // See if request is regarding the Update_PDU Characteristic Value
-if ( ! memcmp(pAttr->type.uuid, Throughput_Service_Update_PDUUUID, pAttr->type.len) )
+  if ( ! memcmp(pAttr->type.uuid, Throughput_Service_Update_PDUUUID, pAttr->type.len) )
   {
     if ( offset > THROUGHPUT_SERVICE_UPDATE_PDU_LEN )  // Prevent malicious ATT ReadBlob offsets.
     {
@@ -463,7 +502,7 @@ if ( ! memcmp(pAttr->type.uuid, Throughput_Service_Update_PDUUUID, pAttr->type.l
     }
   }
   // See if request is regarding the Update_PHY Characteristic Value
-else if ( ! memcmp(pAttr->type.uuid, Throughput_Service_Update_PHYUUID, pAttr->type.len) )
+  else if ( ! memcmp(pAttr->type.uuid, Throughput_Service_Update_PHYUUID, pAttr->type.len) )
   {
     if ( offset > THROUGHPUT_SERVICE_UPDATE_PHY_LEN )  // Prevent malicious ATT ReadBlob offsets.
     {
@@ -476,7 +515,7 @@ else if ( ! memcmp(pAttr->type.uuid, Throughput_Service_Update_PHYUUID, pAttr->t
     }
   }
   // See if request is regarding the Toggle_Throughput Characteristic Value
-else if ( ! memcmp(pAttr->type.uuid, Throughput_Service_Toggle_ThroughputUUID, pAttr->type.len) )
+  else if ( ! memcmp(pAttr->type.uuid, Throughput_Service_Toggle_ThroughputUUID, pAttr->type.len) )
   {
     if ( offset > THROUGHPUT_SERVICE_TOGGLE_THROUGHPUT_LEN )  // Prevent malicious ATT ReadBlob offsets.
     {
@@ -485,6 +524,19 @@ else if ( ! memcmp(pAttr->type.uuid, Throughput_Service_Toggle_ThroughputUUID, p
     else
     {
       *pLen = MIN(maxLen, THROUGHPUT_SERVICE_TOGGLE_THROUGHPUT_LEN - offset);  // Transmit as much as possible
+      memcpy(pValue, pAttr->pValue + offset, *pLen);
+    }
+  }
+  // See if request is regarding the Indication_Mode Characteristic Value
+  else if ( ! memcmp(pAttr->type.uuid, Throughput_Service_Indication_ModeUUID, pAttr->type.len) )
+  {
+    if ( offset > THROUGHPUT_SERVICE_INDICATION_MODE_LEN )  // Prevent malicious ATT ReadBlob offsets.
+    {
+      status = ATT_ERR_INVALID_OFFSET;
+    }
+    else
+    {
+      *pLen = MIN(maxLen, THROUGHPUT_SERVICE_INDICATION_MODE_LEN - offset);  // Transmit as much as possible
       memcpy(pValue, pAttr->pValue + offset, *pLen);
     }
   }
@@ -521,12 +573,12 @@ static bStatus_t Throughput_Service_WriteAttrCB( uint16 connHandle, gattAttribut
   bStatus_t status  = SUCCESS;
   uint8_t   paramID = 0xFF;
 
-  // See if request is regarding a Client Characterisic Configuration
+  // See if request is regarding a Client Characteristic Configuration
   if ( ! memcmp(pAttr->type.uuid, clientCharCfgUUID, pAttr->type.len) )
   {
     // Allow only notifications.
     status = GATTServApp_ProcessCCCWriteReq( connHandle, pAttr, pValue, len,
-                                             offset, GATT_CLIENT_CFG_NOTIFY);
+                                             offset, GATT_CLIENT_CFG_NOTIFY | GATT_CLIENT_CFG_INDICATE);
   }
   // See if request is regarding the Update_PDU Characteristic Value
   else if ( ! memcmp(pAttr->type.uuid, Throughput_Service_Update_PDUUUID, pAttr->type.len) )
@@ -577,6 +629,23 @@ static bStatus_t Throughput_Service_WriteAttrCB( uint16 connHandle, gattAttribut
       // Only notify application if entire expected value is written
       if ( offset + len == THROUGHPUT_SERVICE_TOGGLE_THROUGHPUT_LEN)
         paramID = THROUGHPUT_SERVICE_TOGGLE_THROUGHPUT;
+    }
+  }
+  // See if request is regarding the Indication_Mode Characteristic Value
+  else if ( ! memcmp(pAttr->type.uuid, Throughput_Service_Indication_ModeUUID, pAttr->type.len) )
+  {
+    if ( offset + len > THROUGHPUT_SERVICE_INDICATION_MODE_LEN )
+    {
+      status = ATT_ERR_INVALID_OFFSET;
+    }
+    else
+    {
+      // Copy pValue into the variable we point to from the attribute table.
+      memcpy(pAttr->pValue + offset, pValue, len);
+
+      // Only notify application if entire expected value is written
+      if ( offset + len == THROUGHPUT_SERVICE_INDICATION_MODE_LEN)
+        paramID = THROUGHPUT_SERVICE_INDICATION_MODE;
     }
   }
   else
