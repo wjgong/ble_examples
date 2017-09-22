@@ -88,7 +88,7 @@
 
 // Minimum connection interval (units of 1.25ms, 80=100ms) if automatic
 // parameter update request is enabled
-#define DEFAULT_DESIRED_MIN_CONN_INTERVAL     80
+#define DEFAULT_DESIRED_MIN_CONN_INTERVAL     6
 
 // Maximum connection interval (units of 1.25ms, 800=1000ms) if automatic
 // parameter update request is enabled
@@ -159,7 +159,8 @@
 #define SBP_ROW_ROLESTATE     (TBM_ROW_APP + 4)
 #define SBP_ROW_BDADDR        (TBM_ROW_APP + 5)
 #define SBP_ROW_ROLE          (TBM_ROW_APP + 6)
-#define SBC_ROW_MTU           (TBM_ROW_APP + 7)
+#define SBP_ROW_MTU           (TBM_ROW_APP + 7)
+#define SBP_ROW_CI            (TBM_ROW_APP + 8)
 
 // For DLE
 #define DLE_MAX_PDU_SIZE 251
@@ -298,6 +299,10 @@ static void SimpleBLEPeripheral_freeAttRsp(uint8_t status);
 static void SimpleBLEPeripheral_stateChangeCB(gaprole_States_t newState);
 static void SimpleBLEPeripheral_charValueChangeCB(uint8_t paramID);
 static void SimpleBLEPeripheral_enqueueMsg(uint8_t event, uint8_t state);
+static void SimpleBLEPeripheral_paramUpdateCB(uint16_t connInterval,
+                                              uint16_t connSlaveLatency,
+                                              uint16_t connTimeout);
+static gapRolesParamUpdateCB_t paramUpdateCB = SimpleBLEPeripheral_paramUpdateCB;
 
 static void SBP_throughputOn(void);
 static void SBP_throughputOff(void);
@@ -419,6 +424,8 @@ static void SimpleBLEPeripheral_init(void)
                          &desiredSlaveLatency);
     GAPRole_SetParameter(GAPROLE_TIMEOUT_MULTIPLIER, sizeof(uint16_t),
                          &desiredConnTimeout);
+
+    GAPRole_RegisterAppCBs(&paramUpdateCB);
   }
 
   // Set the GAP Characteristics
@@ -443,7 +450,7 @@ static void SimpleBLEPeripheral_init(void)
   // Setup the Throughput Characteristic Values
   {
     // Set Initial Values of Characteristics in GATT Table
-    uint8_t pdu_size = DEFAULT_PDU_SIZE;
+    uint8_t pdu_size = DLE_MAX_PDU_SIZE;
     uint8_t phy_supported = LL_PHY_1_MBPS;
 
     Throughput_Service_SetParameter(THROUGHPUT_SERVICE_UPDATE_PDU, sizeof(uint8_t),
@@ -489,7 +496,7 @@ static void SimpleBLEPeripheral_init(void)
   VOID GAPRole_StartDevice(&SimpleBLEPeripheral_gapRoleCBs);
 
   // Display Default MTU Size (updated during MTU exchange)
-  Display_print1(dispHandle, SBC_ROW_MTU, 0, "MTU Size: %dB", mtuSize);
+  Display_print1(dispHandle, SBP_ROW_MTU, 0, "MTU Size: %dB", mtuSize);
 }
 
 /*********************************************************************
@@ -790,7 +797,7 @@ static uint8_t SimpleBLEPeripheral_processGATTMsg(gattMsgEvent_t *pMsg)
   {
     // MTU size updated
     mtuSize = pMsg->msg.mtuEvt.MTU;
-    Display_print1(dispHandle, SBC_ROW_MTU, 0, "MTU Size: %d", pMsg->msg.mtuEvt.MTU);
+    Display_print1(dispHandle, SBP_ROW_MTU, 0, "MTU Size: %dB", pMsg->msg.mtuEvt.MTU);
   }
   else if (pMsg->method == ATT_HANDLE_VALUE_CFM)
   {
@@ -1000,7 +1007,13 @@ static void SimpleBLEPeripheral_processStateChangeEvt(gaprole_States_t newState)
           Display_print0(dispHandle, SBP_ROW_STATUS_1, 0, Util_convertBdAddr2Str(peerAddress));
         }
 
+        uint16_t connInterval;
+        GAPRole_GetParameter(GAPROLE_CONN_INTERVAL,&connInterval);
+        Display_print1(dispHandle, SBP_ROW_CI, 0, "Connection Interval: %d", connInterval);
+
         tbm_setItemStatus(&sbpMenuMain, TBM_ITEM_ALL, TBM_ITEM_NONE);
+
+        SimpleBLEPeripheral_doSetDLEPDU(1);
       }
       break;
 
@@ -1117,10 +1130,22 @@ static void SimpleBLEPeripheral_processCharValueChangeEvt(uint8_t paramID)
         Event_post(syncEvent, SBP_INDICATION_MODE_EVT);
         break;
 
+    case THROUGHPUT_SERVICE_WRITE_DATA:
+        // TODO: calculate received data
+        break;
+
     default:
       // should not reach here!
       break;
   }
+}
+
+static void SimpleBLEPeripheral_paramUpdateCB(uint16_t connInterval,
+                                      uint16_t connSlaveLatency,
+                                      uint16_t connTimeout)
+{
+        Display_print1(dispHandle, SBP_ROW_CI, 0,
+                       "Connection Interval: %d", connInterval);
 }
 
 /*********************************************************************

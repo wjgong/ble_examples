@@ -151,7 +151,7 @@ static uint8_t Throughput_Service_Notify_DataVal[THROUGHPUT_SERVICE_NOTIFY_DATA_
 static gattCharCfg_t *notifyDataClientCharCfg;
 
 // Characteristic "Write_Data" Properties (for declaration)
-static uint8_t Throughput_Service_Write_DataProps = GATT_PROP_WRITE;
+static uint8_t Throughput_Service_Write_DataProps = GATT_PROP_WRITE | GATT_PROP_WRITE_NO_RSP;
 // Characteristic "Write_Data" Value variable
 static uint8_t Throughput_Service_Write_DataVal[THROUGHPUT_SERVICE_WRITE_DATA_LEN] = {0};
 
