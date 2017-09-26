@@ -89,15 +89,15 @@ CONST uint8_t Throughput_Service_Toggle_ThroughputUUID[ATT_UUID_SIZE] =
 {
   TI_BASE_UUID_128(THROUGHPUT_SERVICE_TOGGLE_THROUGHPUT_UUID)
 };
-// Wr_Toggle_Throughput UUID
-CONST uint8_t Throughput_Service_Wr_Toggle_ThroughputUUID[ATT_UUID_SIZE] =
-{
-  TI_BASE_UUID_128(THROUGHPUT_SERVICE_WR_TOGGLE_THROUGHPUT_UUID)
-};
 // Notify_Data UUID
 CONST uint8_t Throughput_Service_Notify_DataUUID[ATT_UUID_SIZE] =
 {
   TI_BASE_UUID_128(THROUGHPUT_SERVICE_NOTIFY_DATA_UUID)
+};
+// Wr_Toggle_Throughput UUID
+CONST uint8_t Throughput_Service_Wr_Toggle_ThroughputUUID[ATT_UUID_SIZE] =
+{
+  TI_BASE_UUID_128(THROUGHPUT_SERVICE_WR_TOGGLE_THROUGHPUT_UUID)
 };
 // Write_Data UUID
 CONST uint8_t Throughput_Service_Write_DataUUID[ATT_UUID_SIZE] =
@@ -138,17 +138,17 @@ static uint8_t Throughput_Service_Toggle_ThroughputProps = GATT_PROP_READ | GATT
 // Characteristic "Toggle_Throughput" Value variable
 static uint8_t Throughput_Service_Toggle_ThroughputVal[THROUGHPUT_SERVICE_TOGGLE_THROUGHPUT_LEN] = {0};
 
-// Characteristic "Wr_Toggle_Throughput" Properties (for declaration)
-static uint8_t Throughput_Service_Wr_Toggle_ThroughputProps = GATT_PROP_READ | GATT_PROP_WRITE;
-// Characteristic "Wr_Toggle_Throughput" Value variable
-static uint8_t Throughput_Service_Wr_Toggle_ThroughputVal[THROUGHPUT_SERVICE_WR_TOGGLE_THROUGHPUT_LEN] = {0};
-
 // Characteristic "Notify_Data" Properties (for declaration)
 static uint8_t Throughput_Service_Notify_DataProps = GATT_PROP_NOTIFY | GATT_PROP_INDICATE;
 // Characteristic "Notify_Data" Value variable
 static uint8_t Throughput_Service_Notify_DataVal[THROUGHPUT_SERVICE_NOTIFY_DATA_LEN] = {0};
 // Characteristic "Notify_Data" CCC
 static gattCharCfg_t *notifyDataClientCharCfg;
+
+// Characteristic "Wr_Toggle_Throughput" Properties (for declaration)
+static uint8_t Throughput_Service_Wr_Toggle_ThroughputProps = GATT_PROP_READ | GATT_PROP_WRITE;
+// Characteristic "Wr_Toggle_Throughput" Value variable
+static uint8_t Throughput_Service_Wr_Toggle_ThroughputVal[THROUGHPUT_SERVICE_WR_TOGGLE_THROUGHPUT_LEN] = {0};
 
 // Characteristic "Write_Data" Properties (for declaration)
 static uint8_t Throughput_Service_Write_DataProps = GATT_PROP_WRITE | GATT_PROP_WRITE_NO_RSP;
@@ -215,21 +215,7 @@ static gattAttribute_t Throughput_ServiceAttrTbl[] =
         0,
         Throughput_Service_Toggle_ThroughputVal
       },
-    //3. Wr_Toggle_Throughput Characteristic Declaration
-    {
-      { ATT_BT_UUID_SIZE, characterUUID },
-      GATT_PERMIT_READ,
-      0,
-      &Throughput_Service_Wr_Toggle_ThroughputProps
-    },
-        // Wr_Toggle_Throughput Characteristic Value
-      {
-        { ATT_UUID_SIZE, Throughput_Service_Wr_Toggle_ThroughputUUID },
-        GATT_PERMIT_READ | GATT_PERMIT_WRITE,
-        0,
-        Throughput_Service_Wr_Toggle_ThroughputVal
-      },
-    //4. Notify_Data Characteristic Declaration
+    //3. Notify_Data Characteristic Declaration
     {
       { ATT_BT_UUID_SIZE, characterUUID },
       GATT_PERMIT_READ,
@@ -249,6 +235,20 @@ static gattAttribute_t Throughput_ServiceAttrTbl[] =
         GATT_PERMIT_READ | GATT_PERMIT_WRITE,
         0,
         (uint8_t *) &notifyDataClientCharCfg
+      },
+    //4. Wr_Toggle_Throughput Characteristic Declaration
+    {
+      { ATT_BT_UUID_SIZE, characterUUID },
+      GATT_PERMIT_READ,
+      0,
+      &Throughput_Service_Wr_Toggle_ThroughputProps
+    },
+        // Wr_Toggle_Throughput Characteristic Value
+      {
+        { ATT_UUID_SIZE, Throughput_Service_Wr_Toggle_ThroughputUUID },
+        GATT_PERMIT_READ | GATT_PERMIT_WRITE,
+        0,
+        Throughput_Service_Wr_Toggle_ThroughputVal
       },
     //5. Write_Data Characteristic Declaration
     {
